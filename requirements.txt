@@ -1,0 +1,6 @@
+gradio>=4.0.0
+demucs>=4.0.0
+basic-pitch>=0.2.6
+torch>=2.0.0
+torchaudio>=2.0.0
+transformers>=4.30.0
