@@ -1,10 +1,16 @@
 from basic_pitch.inference import predict
 from basic_pitch import note_creation
+from basic_pitch import BasicPitch
+from basic_pitch.inference import predict
+from basic_pitch.note_creation import create_notes_from_model_output
+from basic_pitch.inference import BasicPitch
 import numpy as np
 
 class BasicPitchConverter:
     def __init__(self):
         pass
+    
+        self.model = BasicPitch()
     
     def convert_to_midi(self, audio_path, output_path):
         # Load audio and convert to MIDI
