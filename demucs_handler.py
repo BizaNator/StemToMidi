@@ -1,39 +1,53 @@
 import torch
+import logging
+from functools import lru_cache
+from typing import Tuple
+from transformers import AutoModel
 import torchaudio
-from demucs import pretrained
+
+logger = logging.getLogger(__name__)
 
 class DemucsProcessor:
-    def __init__(self, model_name="htdemucs"):
-        self.model_name = model_name
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.model = pretrained.get_model(model_name)
-        self.model.to(self.device)
+    def __init__(self):
+        try:
+            self.device = "cuda" if torch.cuda.is_available() else "cpu"
+            # Load model from Hugging Face
+            self.model = AutoModel.from_pretrained("facebook/demucs")
+            self.model.to(self.device)
+            logger.info("Demucs model loaded successfully")
+        except Exception as e:
+            logger.error(f"Error initializing Demucs model: {str(e)}")
+            raise
     
-    def separate_stems(self, audio_path):
-        # Load audio
-        waveform, sample_rate = torchaudio.load(audio_path)
-        
-        # Process stems
-        sources = self.model.separate(waveform.to(self.device))
-        
-        # Return separated stems
-        return sources, sample_rate
+    @lru_cache(maxsize=32)
+    def separate_stems(self, audio_path: str, progress=None) -> Tuple[torch.Tensor, int]:
+        try:
+            if progress:
+                progress(0.1, "Loading audio file...")
+            
+            waveform, sample_rate = torchaudio.load(audio_path)
+            
+            if progress:
+                progress(0.3, "Processing stems...")
+                
+            # Process in segments for memory efficiency
+            sources = self.model.separate(waveform.to(self.device))
+            
+            if progress:
+                progress(0.8, "Finalizing separation...")
+                
+            return sources, sample_rate
+        except Exception as e:
+            logger.error(f"Error in stem separation: {str(e)}")
+            raise
 
-    def configure_processing(self):
-        gpu_memory = torch.cuda.get_device_properties(0).total_memory if torch.cuda.is_available() else 0
-        if gpu_memory < 2e9:  # Less than 2GB
-            return {"device": "cpu"}
-        elif gpu_memory < 7e9:  # Less than 7GB
-            return {
-                "device": "cuda",
-                "segment_size": 8,
-                "overlap": 0.1
-            }
-        return {"device": "cuda"}
-
-    def save_stem(self, stem, stem_name, output_path, sample_rate):
-        torchaudio.save(
-            f"{output_path}/{stem_name}.wav",
-            stem.cpu(),
-            sample_rate
-        )
+    def save_stem(self, stem: torch.Tensor, stem_name: str, output_path: str, sample_rate: int):
+        try:
+            torchaudio.save(
+                f"{output_path}/{stem_name}.wav",
+                stem.cpu(),
+                sample_rate
+            )
+        except Exception as e:
+            logger.error(f"Error saving stem: {str(e)}")
+            raise
