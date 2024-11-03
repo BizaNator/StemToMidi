@@ -1,6 +1,7 @@
 import torch
 import torchaudio
 import logging
+import os
 from demucs.pretrained import get_model
 from demucs.apply import apply_model
 from typing import Tuple
@@ -30,8 +31,16 @@ class DemucsProcessor:
             if progress:
                 progress(0.1, "Loading audio file...")
             
+            # Log file info
+            file_size = os.path.getsize(audio_path) / (1024 * 1024)  # Size in MB
+            logger.info(f"Processing file: {audio_path} (Size: {file_size:.2f}MB)")
+            
             # Load audio
             waveform, sample_rate = torchaudio.load(audio_path)
+            logger.info(f"Audio loaded - Sample rate: {sample_rate}, Shape: {waveform.shape}")
+            
+            if self.device == "cuda":
+                logger.info(f"GPU Memory before processing: {torch.cuda.memory_allocated()/1024**2:.2f}MB")
             
             if progress:
                 progress(0.3, "Processing stems...")
@@ -40,7 +49,7 @@ class DemucsProcessor:
             logger.info(f"Waveform shape before processing: {waveform.shape}")
             if waveform.dim() not in (1, 2):
                 raise ValueError(f"Invalid waveform dimensions: Expected 1D or 2D, got {waveform.dim()}")
-    
+
             # Handle mono input by duplicating to stereo
             if waveform.dim() == 1:
                 waveform = waveform.unsqueeze(0)
@@ -51,10 +60,13 @@ class DemucsProcessor:
             # Ensure 3D tensor for apply_model (batch, channels, time)
             waveform = waveform.unsqueeze(0)  # Add batch dimension
             logger.info(f"Waveform shape before apply_model: {waveform.shape}")
-    
-            # Process - remove progress argument
+
+            # Process
             with torch.no_grad():
                 sources = apply_model(self.model, waveform.to(self.device))
+            
+            if self.device == "cuda":
+                logger.info(f"GPU Memory after processing: {torch.cuda.memory_allocated()/1024**2:.2f}MB")
             
             if progress:
                 progress(0.8, "Finalizing separation...")
@@ -62,7 +74,7 @@ class DemucsProcessor:
             return sources, sample_rate
             
         except Exception as e:
-            logger.error(f"Error in stem separation: {str(e)}")
+            logger.error(f"Error in stem separation: {str(e)}", exc_info=True)
             raise
 
     def save_stem(self, stem: torch.Tensor, stem_name: str, output_path: str, sample_rate: int):
