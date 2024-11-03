@@ -91,7 +91,7 @@ Main application interface featuring:
 ### Local Development
 ```bash
 # Clone repository
-git clone https://github.com/eyov7/Au2Stm2Mdi.git
+git clone https://github.com/eyov7/Aud2Stm2Mdi.git
 
 # Install dependencies
 pip install -r requirements.txt
