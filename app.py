@@ -5,63 +5,66 @@ from pathlib import Path
 from typing import List, Tuple, Optional
 from concurrent.futures import ThreadPoolExecutor
 import logging
+import soundfile as sf
+import numpy as np
+import shutil
 from validators import AudioValidator
 from demucs_handler import DemucsProcessor
 from basic_pitch_handler import BasicPitchConverter
 
-# Set up logging
-logging.basicConfig(
-    level=logging.DEBUG, # Set to DEBUG to ensure messages are logged
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    filename='audio_processor.log',
-    filemode='w' #add filemode='w' to overwrite the file each time
-)
+# Suppress TF logging
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+logging.getLogger('tensorflow').setLevel(logging.ERROR)
+
 logger = logging.getLogger(__name__)
 
-def batch_process_audio(file_paths: List[str], stem_type: str, convert_midi: bool = True) -> List[Tuple[str, Optional[str]]]:
-    """
-    Process multiple audio files in parallel, handling potential errors.
-    """
-    results = []
-    with ThreadPoolExecutor() as executor:
-        futures = [executor.submit(process_single_audio, x, stem_type, convert_midi) for x in file_paths]
-        for future in futures:
-            try:
-                result = future.result()
-                results.append(result)
-            except Exception as e:
-                logger.error(f"Error processing file: {str(e)}")
-                results.append(("", None)) #Append "", None for failed processing
+# Create a persistent directory for outputs
+OUTPUT_DIR = Path("/tmp/audio_processor")
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    return results
-
-def process_single_audio(audio_path: str, stem_type: str, convert_midi: bool) -> Tuple[str, Optional[str]]:
+def process_single_audio(audio_path: str, stem_type: str, convert_midi: bool) -> Tuple[Tuple[int, np.ndarray], Optional[str]]:
     try:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            processor = DemucsProcessor()
-            converter = BasicPitchConverter()
-            
-            logger.info(f"Starting processing of file: {audio_path}")
-            logger.info(f"Temporary directory: {temp_dir}")
-            
-            # Process stems
-            sources, sample_rate = processor.separate_stems(audio_path)
-            stem_index = ["drums", "bass", "other", "vocals"].index(stem_type)
-            selected_stem = sources[stem_index]
-            
-            # Save stem
-            stem_path = os.path.join(temp_dir, f"{stem_type}.wav")
-            processor.save_stem(selected_stem, stem_type, temp_dir, sample_rate)
-            
-            # Convert to MIDI if requested
-            midi_path = None
-            if convert_midi:
-                midi_path = os.path.join(temp_dir, f"{stem_type}.mid")
-                converter.convert_to_midi(stem_path, midi_path)
+        # Create unique subdirectory for this processing
+        process_dir = OUTPUT_DIR / str(hash(audio_path))
+        process_dir.mkdir(parents=True, exist_ok=True)
+        
+        processor = DemucsProcessor()
+        converter = BasicPitchConverter()
+        
+        print(f"Starting processing of file: {audio_path}")
+        
+        # Process stems
+        sources, sample_rate = processor.separate_stems(audio_path)
+        print(f"Number of sources returned: {sources.shape}")
+        print(f"Stem type requested: {stem_type}")
+        
+        # Get the requested stem
+        stem_index = ["drums", "bass", "other", "vocals"].index(stem_type)
+        selected_stem = sources[0, stem_index]
+        
+        # Save stem
+        stem_path = process_dir / f"{stem_type}.wav"
+        processor.save_stem(selected_stem, stem_type, str(process_dir), sample_rate)
+        print(f"Saved stem to: {stem_path}")
+        
+        # Load the saved audio file for Gradio
+        audio_data, sr = sf.read(str(stem_path))
+        if len(audio_data.shape) > 1:
+            audio_data = audio_data.mean(axis=1)  # Convert to mono if stereo
+        
+        # Convert to int16 format
+        audio_data = (audio_data * 32767).astype(np.int16)
+        
+        # Convert to MIDI if requested
+        midi_path = None
+        if convert_midi:
+            midi_path = process_dir / f"{stem_type}.mid"
+            converter.convert_to_midi(str(stem_path), str(midi_path))
+            print(f"Saved MIDI to: {midi_path}")
                 
-            return stem_path, midi_path
+        return (sr, audio_data), str(midi_path) if midi_path else None
     except Exception as e:
-        logger.error(f"Error in process_single_audio: {str(e)}", exc_info=True)
+        print(f"Error in process_single_audio: {str(e)}")
         raise
 
 def create_interface():
@@ -74,32 +77,21 @@ def create_interface():
         stem_type: str,
         convert_midi: bool = True,
         progress=gr.Progress()
-    ) -> Tuple[List[str], List[Optional[str]]]:
+    ) -> Tuple[Tuple[int, np.ndarray], Optional[str]]:
         try:
-            logger.info(f"Starting processing of {len(audio_files)} files")
-            logger.info(f"Selected stem type: {stem_type}")
+            print(f"Starting processing of {len(audio_files)} files")
+            print(f"Selected stem type: {stem_type}")
             
-            # Validate all files
-            for audio_file in audio_files:
-                logger.info(f"Validating file: {audio_file}")
-                is_valid, message = validator.validate_audio_file(audio_file)
-                if not is_valid:
-                    logger.error(f"Validation failed for {audio_file}: {message}")
-                    raise ValueError(f"Invalid audio file: {message}")
-    
-            # Process files in batch
-            logger.info("Starting batch processing")
-            results = batch_process_audio(audio_files, stem_type, convert_midi)
-            
-            # Handle potential None values in midi_files
-            stem_files = [result[0] for result in results]
-            midi_files = [result[1] for result in results]
-            
-            logger.info(f"Processing completed. Stems: {len(stem_files)}, MIDI: {len(midi_files)}")
-            return stem_files, midi_files
+            # Process single file for now
+            if len(audio_files) > 0:
+                audio_path = audio_files[0]  # Take first file
+                print(f"Processing file: {audio_path}")
+                return process_single_audio(audio_path, stem_type, convert_midi)
+            else:
+                raise ValueError("No audio files provided")
             
         except Exception as e:
-            logger.error(f"Error in audio processing: {str(e)}", exc_info=True)  # Added exc_info=True
+            print(f"Error in audio processing: {str(e)}")
             raise gr.Error(str(e))
 
     interface = gr.Interface(
@@ -118,7 +110,7 @@ def create_interface():
             gr.Checkbox(label="Convert to MIDI", value=True)
         ],
         outputs=[
-            gr.Audio(label="Separated Stems", type="filepath"),
+            gr.Audio(label="Separated Stems", type="numpy"),
             gr.File(label="MIDI Files")
         ],
         title="Audio Stem Separator & MIDI Converter",
@@ -132,10 +124,10 @@ def create_interface():
 if __name__ == "__main__":
     interface = create_interface()
     interface.launch(
-        share=False,  # Set to True for public access
+        share=False,
         server_name="0.0.0.0",
         server_port=7860,
-        auth=None,  # Add authentication if needed
-        ssl_keyfile=None,  # Add SSL if needed
+        auth=None,
+        ssl_keyfile=None,
         ssl_certfile=None
     )

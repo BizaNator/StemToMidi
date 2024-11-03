@@ -1,7 +1,7 @@
 # Audio Processing Pipeline: Stem Separation and MIDI Conversion
 
-## Project Objective
-Create a web-based audio processing pipeline that separates audio stems and converts them to MIDI, deployable on Hugging Face Spaces using Gradio.
+## Project Overview
+A production-ready web application that separates audio stems and converts them to MIDI using state-of-the-art deep learning models. Built with Gradio and deployed on LightningAI, this pipeline provides an intuitive interface for audio processing tasks.
 
 ## Technical Requirements
 
@@ -9,185 +9,137 @@ Create a web-based audio processing pipeline that separates audio stems and conv
 ```bash
 pip install gradio>=4.0.0
 pip install demucs>=4.0.0
-pip install basic-pitch>=0.2.6
+pip install basic-pitch>=0.4.0
 pip install torch>=2.0.0 torchaudio>=2.0.0
-pip install transformers>=4.30.0
+pip install soundfile>=0.12.1
+pip install numpy>=1.26.4
+pip install pretty_midi>=0.2.10
 ```
 
 ### File Structure
 ```
 project/
-├── app.py
-├── demucs_handler.py
-├── basic_pitch_handler.py
-├── requirements.txt
-└── README.md
+├── app.py                 # Main Gradio interface and processing logic
+├── demucs_handler.py      # Audio stem separation handler
+├── basic_pitch_handler.py # MIDI conversion handler
+├── validators.py          # Audio file validation utilities
+└── requirements.txt
 ```
 
 ## Implementation Details
 
 ### demucs_handler.py
-```python
-import torch
-import torchaudio
-from demucs import pretrained
-
-class DemucsProcessor:
-    def __init__(self, model_name="htdemucs"):
-        self.model_name = model_name
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.model = pretrained.get_model(model_name)
-        self.model.to(self.device)
-
-    def separate_stems(self, audio_path):
-        # Load audio
-        # Process stems
-        # Return separated stems
-        pass
-
-    def configure_processing(self):
-        gpu_memory = torch.cuda.get_device_properties(0).total_memory if torch.cuda.is_available() else 0
-        if gpu_memory < 2e9:  # Less than 2GB
-            return {"device": "cpu"}
-        elif gpu_memory < 7e9:  # Less than 7GB
-            return {
-                "device": "cuda",
-                "segment_size": 8,
-                "overlap": 0.1
-            }
-        return {"device": "cuda"}
-```
+Handles audio stem separation using the Demucs model:
+- Supports mono and stereo input
+- Automatic stereo conversion for mono inputs
+- Efficient tensor processing with PyTorch
+- Proper error handling and logging
+- Progress tracking during processing
 
 ### basic_pitch_handler.py
-```python
-from basic_pitch import BasicPitch
-from basic_pitch.inference import predict
+Manages MIDI conversion using Spotify's Basic Pitch:
+- Optimized parameters for music transcription
+- Support for polyphonic audio
+- Pitch bend detection
+- Configurable note duration and frequency ranges
+- Robust MIDI file generation
 
-class BasicPitchConverter:
-    def __init__(self):
-        self.model = BasicPitch()
-
-    def convert_to_midi(self, audio_path, output_path):
-        # Load audio
-        # Convert to MIDI
-        # Save MIDI file
-        pass
-
-    def process_options(self):
-        return {
-            'midi_tempo': 120,
-            'min_note_duration': 0.125,
-            'min_frequency': 32.7,  # C1
-            'max_frequency': 2093,  # C7
-            'onset_threshold': 0.5
-        }
-```
+### validators.py
+Provides comprehensive audio file validation:
+- Format verification (WAV, MP3, FLAC)
+- File size limits (30MB default)
+- Sample rate validation (8kHz-48kHz)
+- Audio integrity checking
+- Detailed error reporting
 
 ### app.py
-```python
-import gradio as gr
-from demucs_handler import DemucsProcessor
-from basic_pitch_handler import BasicPitchConverter
-
-def create_interface():
-    processor = DemucsProcessor()
-    converter = BasicPitchConverter()
-
-    def process_audio(audio_file, stem_type, convert_midi=True):
-        # Process audio through pipeline
-        # Return results
-        pass
-
-    interface = gr.Interface(
-        fn=process_audio,
-        inputs=[
-            gr.Audio(type="filepath", label="Upload Audio"),
-            gr.Dropdown(
-                choices=["vocals", "drums", "bass", "other"],
-                label="Select Stem"
-            ),
-            gr.Checkbox(label="Convert to MIDI")
-        ],
-        outputs=[
-            gr.Audio(label="Separated Stem"),
-            gr.File(label="MIDI File")
-        ],
-        title="Audio Stem Separator & MIDI Converter",
-        description="Upload audio to separate stems and convert to MIDI"
-    )
-    return interface
-
-if __name__ == "__main__":
-    interface = create_interface()
-    interface.launch()
-```
+Main application interface featuring:
+- Clean, intuitive Gradio UI
+- Multi-file upload support
+- Stem type selection (vocals, drums, bass, other)
+- Optional MIDI conversion
+- Persistent file handling
+- Progress tracking
+- Comprehensive error handling
 
 ## Key Features
 
-### Demucs Models
-- htdemucs (default)
-- htdemucs_ft
-- htdemucs_6s (6 sources)
-- hdemucs_mmi
-- mdx
-- mdx_extra
+### Audio Processing
+- High-quality stem separation using Demucs
+- Support for multiple audio formats
+- Automatic audio format conversion
+- Efficient memory management
+- Progress tracking during processing
 
-### Basic Pitch Capabilities
+### MIDI Conversion
+- Accurate note detection
 - Polyphonic transcription
-- Pitch bend detection
-- Multi-instrument support
-- Real-time processing
+- Configurable parameters:
+  - Note duration threshold
+  - Frequency range
+  - Onset detection sensitivity
+  - Frame-level pitch activation
 
-### Memory Management
-- CPU fallback for low memory systems
-- Segmented processing for GPUs with 2-7GB memory
-- Full GPU processing for 7GB+ systems
+### User Interface
+- Simple, intuitive design
+- Real-time processing feedback
+- Preview capabilities
+- File download options
 
-## Deployment Instructions
+## Deployment
 
 ### Local Development
 ```bash
+# Clone repository
+git clone https://github.com/eyov7/Au2Stm2Mdi.git
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run application
 python app.py
 ```
 
-### Hugging Face Spaces
-1. Create new Space
-2. Upload files
-3. Set environment variables
+### Lightning.ai Deployment
+1. Create new Lightning App
+2. Upload project files
+3. Configure compute instance (CPU or GPU)
 4. Deploy
 
 ## Error Handling
+Implemented comprehensive error handling for:
+- Invalid file formats
+- File size limits
+- Processing failures
+- Memory constraints
+- File system operations
+- Model inference errors
 
-Implement try-except blocks for:
-- File loading
-- Model inference
-- MIDI conversion
-- Memory management
 
-## Testing
-
-Test with various:
-- Audio formats (WAV, MP3, FLAC)
-- File lengths
-- Processing options
-- Memory conditions
-
-## Future Enhancements
-- Batch processing
-- Custom model support
-- Advanced MIDI editing
-- Real-time processing
-- Audio preview
+## Production Features
+- Robust file validation
+- Persistent storage management
+- Proper error logging
 - Progress tracking
+- Clean user interface
+- Download capabilities
+- Multi-format support
+
+## Limitations
+- Maximum file size: 30MB
+- Supported formats: WAV, MP3, FLAC
+- Single file processing (no batch)
+- CPU-only processing by default
 
 ## Notes
-- Ensure proper GPU drivers for CUDA support
-- Monitor memory usage during processing
-- Consider implementing caching for repeated operations
-- Add logging for debugging
+- Ensure proper audio codec support
+- Monitor system resources
+- Regular temporary file cleanup
+- Consider implementing rate limiting
+- Add user session management
 
-This markdown provides a comprehensive reference for implementing the audio processing pipeline. The AI coding bot can use this as a guide for developing each component while maintaining the overall structure and functionality.
-
+## Closing Note
+This implementation is currently running successfully on Lightning.ai, providing reliable audio stem separation and MIDI conversion capabilities through an intuitive web interface.
 
 
 
