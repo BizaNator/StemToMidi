@@ -40,20 +40,31 @@ class BasicPitchConverter:
                 onset_threshold=self.process_options['onset_threshold']
             )
             
+    def separate_stems(self, audio_path: str, progress=None) -> Tuple[torch.Tensor, int]:
+        try:
             if progress:
-                progress(0.7, "Saving MIDI file...")
+                progress(0.1, "Loading audio file...")
             
-            # Save as MIDI
-            note_creation.save_midi(
-                notes,
-                output_path,
-                tempo=self.process_options['tempo']
-            )
+            # Log file info
+            file_size = os.path.getsize(audio_path) / (1024 * 1024)  # Size in MB
+            logger.info(f"Processing file: {audio_path} (Size: {file_size:.2f}MB)")
             
-            return output_path
+            # Load audio
+            waveform, sample_rate = torchaudio.load(audio_path)
+            logger.info(f"Audio loaded - Sample rate: {sample_rate}, Shape: {waveform.shape}")
+            
+            if self.device == "cuda":
+                logger.info(f"GPU Memory before processing: {torch.cuda.memory_allocated()/1024**2:.2f}MB")
+            
+            # Rest of your existing code...
+            
+            if self.device == "cuda":
+                logger.info(f"GPU Memory after processing: {torch.cuda.memory_allocated()/1024**2:.2f}MB")
+                
+            return sources, sample_rate
             
         except Exception as e:
-            logger.error(f"Error in MIDI conversion: {str(e)}")
+            logger.error(f"Error in stem separation: {str(e)}", exc_info=True)  # Added exc_info=True
             raise
 
     def set_process_options(self, **kwargs):

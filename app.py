@@ -11,44 +11,58 @@ from basic_pitch_handler import BasicPitchConverter
 
 # Set up logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG, # Set to DEBUG to ensure messages are logged
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    filename='audio_processor.log'
+    filename='audio_processor.log',
+    filemode='w' #add filemode='w' to overwrite the file each time
 )
 logger = logging.getLogger(__name__)
 
 def batch_process_audio(file_paths: List[str], stem_type: str, convert_midi: bool = True) -> List[Tuple[str, Optional[str]]]:
     """
-    Process multiple audio files in parallel
+    Process multiple audio files in parallel, handling potential errors.
     """
+    results = []
     with ThreadPoolExecutor() as executor:
-        results = list(executor.map(
-            lambda x: process_single_audio(x, stem_type, convert_midi),
-            file_paths
-        ))
+        futures = [executor.submit(process_single_audio, x, stem_type, convert_midi) for x in file_paths]
+        for future in futures:
+            try:
+                result = future.result()
+                results.append(result)
+            except Exception as e:
+                logger.error(f"Error processing file: {str(e)}")
+                results.append(("", None)) #Append "", None for failed processing
+
     return results
 
 def process_single_audio(audio_path: str, stem_type: str, convert_midi: bool) -> Tuple[str, Optional[str]]:
-    with tempfile.TemporaryDirectory() as temp_dir:
-        processor = DemucsProcessor()
-        converter = BasicPitchConverter()
-        
-        # Process stems
-        sources, sample_rate = processor.separate_stems(audio_path)
-        stem_index = ["drums", "bass", "other", "vocals"].index(stem_type)
-        selected_stem = sources[stem_index]
-        
-        # Save stem
-        stem_path = os.path.join(temp_dir, f"{stem_type}.wav")
-        processor.save_stem(selected_stem, stem_type, temp_dir, sample_rate)
-        
-        # Convert to MIDI if requested
-        midi_path = None
-        if convert_midi:
-            midi_path = os.path.join(temp_dir, f"{stem_type}.mid")
-            converter.convert_to_midi(stem_path, midi_path)
-        
-        return stem_path, midi_path
+    try:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            processor = DemucsProcessor()
+            converter = BasicPitchConverter()
+            
+            logger.info(f"Starting processing of file: {audio_path}")
+            logger.info(f"Temporary directory: {temp_dir}")
+            
+            # Process stems
+            sources, sample_rate = processor.separate_stems(audio_path)
+            stem_index = ["drums", "bass", "other", "vocals"].index(stem_type)
+            selected_stem = sources[stem_index]
+            
+            # Save stem
+            stem_path = os.path.join(temp_dir, f"{stem_type}.wav")
+            processor.save_stem(selected_stem, stem_type, temp_dir, sample_rate)
+            
+            # Convert to MIDI if requested
+            midi_path = None
+            if convert_midi:
+                midi_path = os.path.join(temp_dir, f"{stem_type}.mid")
+                converter.convert_to_midi(stem_path, midi_path)
+                
+            return stem_path, midi_path
+    except Exception as e:
+        logger.error(f"Error in process_single_audio: {str(e)}", exc_info=True)
+        raise
 
 def create_interface():
     processor = DemucsProcessor()
@@ -62,22 +76,30 @@ def create_interface():
         progress=gr.Progress()
     ) -> Tuple[List[str], List[Optional[str]]]:
         try:
+            logger.info(f"Starting processing of {len(audio_files)} files")
+            logger.info(f"Selected stem type: {stem_type}")
+            
             # Validate all files
             for audio_file in audio_files:
+                logger.info(f"Validating file: {audio_file}")
                 is_valid, message = validator.validate_audio_file(audio_file)
                 if not is_valid:
+                    logger.error(f"Validation failed for {audio_file}: {message}")
                     raise ValueError(f"Invalid audio file: {message}")
-
+    
             # Process files in batch
+            logger.info("Starting batch processing")
             results = batch_process_audio(audio_files, stem_type, convert_midi)
             
-            # Unzip results
-            stem_files, midi_files = zip(*results)
+            # Handle potential None values in midi_files
+            stem_files = [result[0] for result in results]
+            midi_files = [result[1] for result in results]
             
-            return list(stem_files), list(midi_files)
+            logger.info(f"Processing completed. Stems: {len(stem_files)}, MIDI: {len(midi_files)}")
+            return stem_files, midi_files
             
         except Exception as e:
-            logger.error(f"Error in audio processing: {str(e)}")
+            logger.error(f"Error in audio processing: {str(e)}", exc_info=True)  # Added exc_info=True
             raise gr.Error(str(e))
 
     interface = gr.Interface(
@@ -101,10 +123,6 @@ def create_interface():
         ],
         title="Audio Stem Separator & MIDI Converter",
         description="Upload audio files to separate stems and convert to MIDI",
-        examples=[
-            ["example1.mp3", "vocals", True],
-            ["example2.wav", "drums", False]
-        ],
         cache_examples=True,
         allow_flagging="never"
     )
