@@ -114,7 +114,9 @@ def create_interface():
             gr.File(label="MIDI Files")
         ],
         title="Audio Stem Separator & MIDI Converter",
-        description="Upload audio files to separate stems and convert to MIDI",
+        description="Upload audio files to separate stems and convert to MIDI\n\n" +
+                   "Created by Ever Olivares - Looking for Summer 2025 Internship Opportunities\n" +
+                   "Connect with me: [LinkedIn](https://www.linkedin.com/in/everolivares/)",
         cache_examples=True,
         allow_flagging="never"
     )
