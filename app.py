@@ -19,7 +19,7 @@ logging.getLogger('tensorflow').setLevel(logging.ERROR)
 logger = logging.getLogger(__name__)
 
 # Create a persistent directory for outputs
-OUTPUT_DIR = Path("/tmp/audio_processor")
+OUTPUT_DIR = Path("F:/AI_Tools/Audio/Audio2Stem2Midi/Aud2Stm2Mdi/output")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 def process_single_audio(audio_path: str, stem_type: str, convert_midi: bool) -> Tuple[Tuple[int, np.ndarray], Optional[str]]:

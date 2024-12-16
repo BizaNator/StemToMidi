@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 
 class AudioValidator:
     SUPPORTED_FORMATS = ['.mp3', '.wav', '.flac']
-    MAX_FILE_SIZE = 30 * 1024 * 1024  # 30MB
+    MAX_FILE_SIZE = 125 * 1024 * 1024  # Max Upload File Size Increased to 125MB
     
     @staticmethod
     def validate_audio_file(file_path: str) -> Tuple[bool, str]:
